@@ -6,19 +6,20 @@ const clubSchema = new Schema(
     title: {
       type: String,
       required: true,
-      unique: true, // Ensures no duplicate club titles
+      unique: true,
     },
     description: {
       type: String,
       required: true,
     },
     image: {
-      type: String, // Store the image file path or URL
+      type: String,
       required: true,
-      match: [/^https?:\/\/.+\.(jpg|jpeg|png|gif)$/, 'Please provide a valid image URL'],
+      // Remove URL validation, since it's a local file path
+      // match: [/^https?:\/\/.+\.(jpg|jpeg|png|gif)$/, 'Please provide a valid image URL'],
     },
     hashtags: {
-      type: [String], // Array of hashtags for search or categorization
+      type: [String],
       required: true,
       validate: {
         validator: function(value) {
@@ -29,11 +30,11 @@ const clubSchema = new Schema(
     },
     createdBy: {
       type: Schema.Types.ObjectId,
-      ref: 'User',  // Assuming you have a User model for admins or creators
+      ref: 'User',
     },
   },
   {
-    timestamps: true, // Automatically add createdAt and updatedAt fields
+    timestamps: true,
   }
 );
 

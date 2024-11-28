@@ -3,32 +3,34 @@ const User = require('../models/User');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 
+// Login controller function
 const login = async (req, res) => {
   const { email, password } = req.body;
 
   try {
-    // Check if the user exists
+    // Check if user exists
     const user = await User.findOne({ email });
     if (!user) {
-      return res.status(400).json({ message: 'User does not exist' });
+      return res.status(400).json({ message: 'User not found' });
     }
 
     // Compare the provided password with the stored hashed password
-    const validPassword = await bcrypt.compare(password, user.password);
-    if (!validPassword) {
+    const isPasswordValid = await bcrypt.compare(password, user.password);
+    if (!isPasswordValid) {
       return res.status(400).json({ message: 'Invalid credentials' });
     }
 
-    // Generate a JWT token
+    // Generate JWT token
     const token = jwt.sign(
-      { userId: user._id, email: user.email },
-      'your_jwt_secret', // Use your secret here
+      { userId: user._id, email: user.email }, // Payload
+      process.env.JWT_SECRET || 'your_jwt_secret', // Secret (ensure it is in your .env file)
       { expiresIn: '1h' } // Token expiration time (optional)
     );
 
-    // Send the token back to the client
-    res.status(200).json({ token });
+    // Return the token and user data
+    res.status(200).json({ token, user });
   } catch (error) {
+    console.error('Error during login:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };

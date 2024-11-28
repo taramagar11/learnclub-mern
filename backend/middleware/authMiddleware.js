@@ -1,22 +1,19 @@
+// backend/middlewares/authMiddleware.js
 const jwt = require('jsonwebtoken');
+const User = require('../models/User'); // Adjust the path if necessary
 
-const verifyAdmin = (req, res, next) => {
-  const token = req.headers['authorization'];
-
+const protect = (req, res, next) => {
+  const token = req.headers.authorization && req.headers.authorization.split(' ')[1]; // Assuming "Bearer <token>"
   if (!token) {
-    return res.status(403).json({ message: 'Access denied' });
+    return res.status(401).json({ message: 'Not authorized, no token' });
   }
-
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    if (decoded.role !== 'admin') {
-      return res.status(403).json({ message: 'Access denied' });
-    }
-    req.user = decoded;
-    next();
-  } catch (err) {
-    return res.status(403).json({ message: 'Invalid token' });
+    const decoded = jwt.verify(token, 'yourSecretKey'); // Replace with your secret key
+    req.user = decoded; // Attach the user to the request object
+    next(); // Move to the next middleware or route handler
+  } catch (error) {
+    res.status(401).json({ message: 'Invalid or expired token' });
   }
 };
 
-module.exports = { verifyAdmin };
+module.exports = protect;

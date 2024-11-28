@@ -1,56 +1,80 @@
+// routes/userRoutes.js
 const express = require('express');
-const User = require('../models/User');
-const router = express.Router();
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+const User = require('../models/User'); // Assuming your user model is at this path
+const protect = require('../middleware/authMiddleware');
 
-// Fetch all users (admin-only route)
-router.get('/users', async (req, res) => {
-  try {
-    const users = await User.find();
-    res.json(users);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: 'Error fetching users' });
-  }
-});
+const router = express.Router(); // Initialize the router
 
-// Handle club request action (accept/reject) - Admin only
-router.post('/users/:userId/join-club', async (req, res) => {
-  const { userId } = req.params;
-  const { action } = req.body;  // Either 'accept' or 'reject'
+// Signup Route
+router.post('/signup', async (req, res) => {
+  const { fullName, email, password } = req.body;
 
   try {
-    // Find the user by ID
-    const user = await User.findById(userId);
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
+    // Check if the email is already in use
+    const userExists = await User.findOne({ email });
+    if (userExists) {
+      return res.status(400).json({ message: 'User already exists' });
     }
 
-    // Ensure the user has a club field and update membership status
-    user.club = user.club || {};  // Ensure club field exists
-    user.club.membershipStatus = action === 'accept' ? 'member' : 'pending';
-
-    await user.save();
-    res.json({ message: `User's club request has been ${action}ed.` });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: 'Error updating club membership' });
+    // Create new user
+    const newUser = new User({ fullName, email, password });
+    await newUser.save();
+    res.status(201).json({ message: 'User registered successfully' });
+  } catch (error) {
+    res.status(500).json({ message: 'Error registering user', error });
   }
 });
 
-// Delete a user (Admin only)
-router.delete('/users/:userId', async (req, res) => {
-  const { userId } = req.params;
+// Login Route
+router.post('/login', async (req, res) => {
+  const { email, password } = req.body;
 
   try {
-    const user = await User.findByIdAndDelete(userId);
+    // Find the user by email
+    const user = await User.findOne({ email });
     if (!user) {
-      return res.status(404).json({ message: 'User not found' });
+      return res.status(400).json({ message: 'Invalid credentials' });
     }
-    res.json({ message: 'User deleted successfully' });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: 'Error deleting user' });
+
+    // Compare passwords
+    const isPasswordMatch = await user.matchPassword(password);
+    if (!isPasswordMatch) {
+      return res.status(400).json({ message: 'Invalid credentials' });
+    }
+
+    // Generate JWT token
+    const token = jwt.sign({ id: user._id, isAdmin: user.isAdmin }, process.env.JWT_SECRET, { expiresIn: '1h' });
+
+    res.json({ message: 'Login successful', token });
+  } catch (error) {
+    res.status(500).json({ message: 'Error during login', error });
   }
 });
 
+// User joins a club (request to join)
+router.post('/join-club/:clubId', protect, async (req, res) => {
+  const userId = req.user._id; // Get user from JWT token
+  const { clubId } = req.params;
+
+  try {
+    // Check if the user is already a member of the club
+    const club = await Club.findById(clubId);
+    if (club.members.includes(userId)) {
+      return res.status(400).json({ message: 'You are already a member of this club.' });
+    }
+
+    // Create a join request
+    const joinRequest = new JoinRequest({
+      user: userId,
+      club: clubId,
+    });
+
+    await joinRequest.save();
+    res.status(201).json({ message: 'Join request sent successfully' });
+  } catch (error) {
+    res.status(500).json({ message: 'Error sending join request' });
+  }
+});
 module.exports = router;

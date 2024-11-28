@@ -1,40 +1,44 @@
-  const express = require('express');
-  const bcrypt = require('bcrypt');
-  const jwt = require('jsonwebtoken');
-  const User = require('../models/User');
-  const router = express.Router();
+const express = require('express');
+const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken');
+const User = require('../models/User');
+const Club = require('../models/Club');
+const JoinRequest = require('../models/JoinRequest'); // Import JoinRequest model
+const router = express.Router();
+const protect = require('../middleware/authMiddleware');
 
-  // Admin login route
-  router.post('/admin-login', async (req, res) => {
-    const { email, password } = req.body;
 
-    try {
-      const user = await User.findOne({ email });
-      if (!user) {
-        return res.status(400).json({ message: 'Invalid email or password' });
-      }
+// Admin login route
+router.post('/admin-login', async (req, res) => {
+  const { email, password } = req.body;
 
-      // Check if the user is admin
-      if (!user.isAdmin) {
-        return res.status(403).json({ message: 'Access denied: Not an admin' });
-      }
-
-      const match = await bcrypt.compare(password, user.password);
-      if (!match) {
-        return res.status(400).json({ message: 'Invalid email or password' });
-      }
-
-      // Create JWT token
-      const token = jwt.sign({ userId: user._id, isAdmin: user.isAdmin }, 'your_secret_key', { expiresIn: '1h' });
-
-      res.json({ token });
-    } catch (err) {
-      console.error(err);
-      res.status(500).json({ message: 'Server error' });
+  try {
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(400).json({ message: 'Invalid email or password' });
     }
-  });
 
-  // Get all users along with their club information, excluding admins
+    // Check if the user is admin
+    if (!user.isAdmin) {
+      return res.status(403).json({ message: 'Access denied: Not an admin' });
+    }
+
+    const match = await bcrypt.compare(password, user.password);
+    if (!match) {
+      return res.status(400).json({ message: 'Invalid email or password' });
+    }
+
+    // Create JWT token
+    const token = jwt.sign({ userId: user._id, isAdmin: user.isAdmin }, 'your_secret_key', { expiresIn: '1h' });
+
+    res.json({ token });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Get all non-admin users
 router.get('/users', async (req, res) => {
   try {
     const users = await User.find({ isAdmin: { $ne: true } }); // Exclude admin users
@@ -45,29 +49,52 @@ router.get('/users', async (req, res) => {
   }
 });
 
-// Accept or Reject a user's club join request
-router.post('/users/:userId/join-club', async (req, res) => {
-  const { userId } = req.params;
-  const { action } = req.body;  // action: accept or reject
+// Admin views pending join requests for a club
+router.get('/club/:clubId/pending-requests', protect, async (req, res) => {
+  const { clubId } = req.params;
+  
+  try {
+    // Find all pending join requests for the club
+    const pendingRequests = await JoinRequest.find({ club: clubId, status: 'pending' })
+      .populate('user', 'email') // Populate the user details
+      .populate('club', 'name');
+
+    res.json(pendingRequests);
+  } catch (error) {
+    res.status(500).json({ message: 'Error fetching pending join requests' });
+  }
+});
+
+// Admin accepts or rejects a join request
+router.post('/club/:clubId/handle-request/:requestId', protect, async (req, res) => {
+  const { clubId, requestId } = req.params;
+  const { action } = req.body; // action: 'accept' or 'reject'
 
   if (!['accept', 'reject'].includes(action)) {
     return res.status(400).json({ message: 'Invalid action' });
   }
 
   try {
-    const user = await User.findById(userId).populate('club.clubId');
-    if (!user) return res.status(404).json({ message: 'User not found' });
+    // Find the join request
+    const joinRequest = await JoinRequest.findById(requestId);
+    if (!joinRequest || joinRequest.club.toString() !== clubId) {
+      return res.status(404).json({ message: 'Join request not found' });
+    }
+
+    // Update the request status
+    joinRequest.status = action === 'accept' ? 'accepted' : 'rejected';
+    await joinRequest.save();
 
     if (action === 'accept') {
-      user.club.membershipStatus = 'member';
-    } else {
-      user.club.membershipStatus = 'rejected';
+      // Add the user to the club's members array
+      const club = await Club.findById(clubId);
+      club.members.push(joinRequest.user);
+      await club.save();
     }
-    await user.save();
 
-    res.json({ message: `User's request has been ${action}ed` });
-  } catch (err) {
-    res.status(500).json({ message: 'Error processing request' });
+    res.json({ message: `Request ${action}ed successfully` });
+  } catch (error) {
+    res.status(500).json({ message: 'Error handling join request' });
   }
 });
 
@@ -82,4 +109,7 @@ router.delete('/users/:userId', async (req, res) => {
     res.status(500).json({ message: 'Error deleting user' });
   }
 });
-  module.exports = router;
+
+router.use('/clubs', require('./clubRoutes')); // Import the club routes
+
+module.exports = router;

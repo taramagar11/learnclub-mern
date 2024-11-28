@@ -1,37 +1,46 @@
-// routes/clubRoutes.js
 const express = require('express');
+const multer = require('multer');
+const Club = require('../models/Club');
+const clubController = require('../controllers/clubController');
+const protect = require('../middlewares/authMiddleware');
+const membership = require('../middleware/checkMembership');
 const router = express.Router();
-const Club = require('../models/Club');  // Import the Club model
 
-// POST route to create a new club
-router.post('/api/clubs', async (req, res) => {
-  const { title, description, image, hashtags } = req.body;
+// Multer configuration for image upload
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, './uploads'); // Set the upload directory
+  },
+  filename: (req, file, cb) => {
+    // Generate a unique filename using timestamp and original file name
+    cb(null, Date.now() + file.originalname);
+  }
+});
+const upload = multer({
+  storage,
+  fileFilter: (req, file, cb) => {
+    // Only allow image files (this can be extended based on requirements)
+    const allowedTypes = /jpeg|jpg|png|gif/;
+    const extname = allowedTypes.test(file.mimetype);
+    const basename = allowedTypes.test(file.originalname.toLowerCase());
 
-  try {
-    const newClub = new Club({
-      title,
-      description,
-      image,
-      hashtags,
-    });
-
-    await newClub.save();
-    res.status(201).json({ message: 'Club created successfully!', club: newClub });
-  } catch (error) {
-    console.error('Error creating the club:', error);
-    res.status(500).json({ error: 'Error creating the club' });
+    if (extname && basename) {
+      return cb(null, true);
+    }
+    cb(new Error('Only image files are allowed.'));
   }
 });
 
-router.get('/api/clubs', async (req, res) => {
+// Public routes: Anyone can access
+router.get('/', clubController.getClubs);  // Get all clubs
+router.get('/:clubId', clubController.getClubById);  // Get specific club
 
-  try {
-    const clubs = await Club.find();
-    res.status(200).json({ message: 'Data found', data: clubs });
-  } catch (error) {
-    console.error('Error creating the club:', error);
-    res.status(500).json({ error: 'Error creating the club' });
-  }
-});
+// Protected routes: Require authentication
+router.post('/', protect, upload.single('image'), clubController.addClub);  // Add a new club
+router.put('/:clubId', protect, upload.single('image'), clubController.updateClub);  // Update club
+router.delete('/:clubId', protect, clubController.deleteClub);  // Delete a club
+
+// Example of a route requiring membership check (e.g., to access club content)
+router.get('/:clubId/content', protect, checkMembership, clubController.getClubContent);  // Only members can access this
 
 module.exports = router;

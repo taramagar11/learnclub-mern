@@ -1,4 +1,3 @@
-// controllers/signup.js
 const User = require('../models/User');
 const bcrypt = require('bcrypt');
 
@@ -13,13 +12,13 @@ const signUp = async (req, res) => {
 
   try {
     // Hash the password
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const hashedPassword = await bcrypt.hash(password, 10);  // Ensure this step is done
 
-    // Create a new user instance
+    // Create a new user instance with the hashed password
     const newUser = new User({
       fullName,
       email,
-      password: hashedPassword,
+      password: hashedPassword,  // Store the hashed password, not the plaintext one
     });
 
     // Save the user to the database
